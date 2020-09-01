@@ -97,7 +97,7 @@
     <forkCount>4</forkCount>
     <!-- Default intercom app id -->
     <dremio.ui.intercom.appid>z8apq4co</dremio.ui.intercom.appid>
-    <npm.registry.url>https://registry.npmjs.org</npm.registry.url>
+    <npm.registry.url>https://registry.npm.taobao.org</npm.registry.url>
     <dremio.mapr.distribution>nonmapr</dremio.mapr.distribution>
     <dremio.release>false</dremio.release>
     <!--
