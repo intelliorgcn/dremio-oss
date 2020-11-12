@@ -614,15 +614,15 @@ public class SourceService {
     }
   }
 
-  public SourceState getSourceState(String sourceName) throws SourceNotFoundException {
+  public SourceState getSourceState(String sourceName) {
     try {
       SourceState state = catalogService.getSourceState(sourceName);
       if(state == null) {
-        return SourceState.badState("Unable to find source.");
+        return SourceState.badState(String.format("Source %s could not be found, please verify the source name.", "Unable to find source."));
       }
       return state;
     } catch (Exception e) {
-      return SourceState.badState(e);
+      return SourceState.badState("", e);
     }
   }
 
@@ -665,9 +665,6 @@ public class SourceService {
   public Source fromSourceConfig(SourceConfig sourceConfig, List<CatalogItem> children) {
     final AccelerationSettings settings = reflectionServiceHelper.getReflectionSettings().getReflectionSettings(new NamespaceKey(sourceConfig.getName()));
     Source source = new Source(sourceConfig, settings, getConnectionReader(), children);
-
-    // we should not set fields that expose passwords and other private parts of the source
-    source.getConfig().clearSecrets();
 
     SourceState state = getStateForSource(sourceConfig);
     source.setState(state);

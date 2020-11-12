@@ -92,6 +92,7 @@ enum WorkloadType {
   ACCELERATOR = 9;
   DDL = 10;
   UI_DOWNLOAD = 11;
+  FLIGHT = 12;
 }
 
 message DremioPBError{
@@ -442,6 +443,7 @@ message LayoutMaterializedViewProfile {
   optional ReflectionType type = 21;
   optional bool snowflake = 22;
   repeated MeasureColumn measure_columns = 23;
+  optional bool default_reflection = 24;
 }
 
 message SubstitutionProfile {

@@ -236,7 +236,7 @@ public class PrelTransformer {
 
     try {
       final RelNode trimmed = trimFields(relNode, true, config.getContext().getPlannerSettings().isRelPlanningEnabled());
-      final RelNode preLog = transform(config, PlannerType.HEP_AC, PlannerPhase.PRE_LOGICAL, trimmed, trimmed.getTraitSet(), true);
+      final RelNode preLog = transform(config, PlannerType.HEP_BOTTOM_UP, PlannerPhase.PRE_LOGICAL, trimmed, trimmed.getTraitSet(), true);
 
       final RelTraitSet logicalTraits = preLog.getTraitSet().plus(Rel.LOGICAL);
       final RelNode adjusted = transform(config, PlannerType.VOLCANO, PlannerPhase.LOGICAL, preLog, logicalTraits, true);
@@ -259,7 +259,15 @@ public class PrelTransformer {
 
       RelNode postLogical;
       if (config.getContext().getPlannerSettings().isRelPlanningEnabled()) {
-        final RelNode decorrelatedNode = DremioRelDecorrelator.decorrelateQuery(intermediateNode, DremioRelFactories.LOGICAL_BUILDER.create(intermediateNode.getCluster(), null), true, true);
+        RelNode relWithoutMultipleConstantGroupKey;
+        try {
+          // Try removing multiple constants group keys from aggregates. Any unexpected failures in this process shouldn't fail the whole query.
+          relWithoutMultipleConstantGroupKey = MoreRelOptUtil.removeConstantGroupKeys(intermediateNode, DremioRelFactories.LOGICAL_BUILDER);
+        } catch (Exception ex) {
+          logger.error("Failure while removing multiple constant group by keys in aggregate, ", ex);
+          relWithoutMultipleConstantGroupKey = intermediateNode;
+        }
+        final RelNode decorrelatedNode = DremioRelDecorrelator.decorrelateQuery(relWithoutMultipleConstantGroupKey, DremioRelFactories.LOGICAL_BUILDER.create(relWithoutMultipleConstantGroupKey.getCluster(), null), true);
         final RelNode jdbcPushDown = transform(config, PlannerType.HEP_AC, PlannerPhase.RELATIONAL_PLANNING, decorrelatedNode, decorrelatedNode.getTraitSet().plus(Rel.LOGICAL), true);
         postLogical = jdbcPushDown.accept(new ShortenJdbcColumnAliases()).accept(new ConvertJdbcLogicalToJdbcRel(DremioRelFactories.LOGICAL_BUILDER));
       } else {
@@ -299,6 +307,23 @@ public class PrelTransformer {
         throw ex;
       }
     }
+  }
+
+  /***
+   * Converts to drel then adds a project to maintain the result names if necessary.
+   *
+   * @param config
+   * @param relNode
+   * @return
+   * @throws SqlUnsupportedException
+   * @throws RelConversionException
+   */
+  public static Rel convertToDrelMaintainingNames(
+    SqlHandlerConfig config,
+    RelNode relNode
+  ) throws SqlUnsupportedException, RelConversionException {
+    Rel drel = convertToDrel(config, relNode);
+    return addRenamedProject(config, drel, relNode.getRowType());
   }
 
   /**
@@ -477,19 +502,7 @@ public class PrelTransformer {
       final AccelerationAwareSubstitutionProvider substitutions = config.getConverter().getSubstitutionProvider();
       substitutions.setObserver(config.getObserver());
       substitutions.setEnabled(phase.useMaterializations);
-      substitutions.setPostSubstitutionTransformer(
-        relNode -> {
-          final HepProgramBuilder builder = HepProgram.builder();
-          builder.addMatchOrder(HepMatchOrder.ARBITRARY);
-          builder.addRuleCollection(Lists.newArrayList(config.getRules(PlannerPhase.POST_SUBSTITUTION)));
-
-          final HepProgram p = builder.build();
-
-          final HepPlanner pl = new HepPlanner(p);
-          pl.setRoot(relNode);
-          return pl.findBestExp().accept(new ConvertJdbcLogicalToJdbcRel(DremioRelFactories.CALCITE_LOGICAL_BUILDER));
-        }
-      );
+      substitutions.setPostSubstitutionTransformer(getPostSubstitutionTransformer(config));
 
       planner = volcanoPlanner;
       toPlan = () -> {
@@ -502,6 +515,20 @@ public class PrelTransformer {
     }
 
     return doTransform(config, plannerType, phase, planner, input, log, toPlan);
+  }
+
+  public static RelTransformer getPostSubstitutionTransformer(SqlHandlerConfig config) {
+    return relNode -> {
+      final HepProgramBuilder builder = HepProgram.builder();
+      builder.addMatchOrder(HepMatchOrder.ARBITRARY);
+      builder.addRuleCollection(Lists.newArrayList(config.getRules(PlannerPhase.POST_SUBSTITUTION)));
+
+      final HepProgram p = builder.build();
+
+      final HepPlanner pl = new HepPlanner(p);
+      pl.setRoot(relNode);
+      return pl.findBestExp().accept(new ConvertJdbcLogicalToJdbcRel(DremioRelFactories.CALCITE_LOGICAL_BUILDER));
+    };
   }
 
   private static RelNode doTransform(SqlHandlerConfig config, final PlannerType plannerType, final PlannerPhase phase, final RelOptPlanner planner, final RelNode input, boolean log, Supplier<RelNode> toPlan) {
@@ -844,7 +871,9 @@ public class PrelTransformer {
 
   private static RelNode toConvertibleRelRoot(SqlHandlerConfig config, final SqlNode validatedNode, boolean expand, RelTransformer relTransformer) {
     final Stopwatch stopwatch = Stopwatch.createStarted();
-    final RelRootPlus convertible = config.getConverter().toConvertibleRelRoot(validatedNode, expand);
+    config.getConverter().getSubstitutionProvider().setPostSubstitutionTransformer(getPostSubstitutionTransformer(config));
+    config.getConverter().getSubstitutionProvider().setObserver(config.getObserver());
+    final RelRootPlus convertible = config.getConverter().toConvertibleRelRoot(validatedNode, expand, true);
     config.getObserver().planConvertedToRel(convertible.rel, stopwatch.elapsed(TimeUnit.MILLISECONDS));
 
     if(config.getContext().getOptions().getOption(PlannerSettings.VDS_AUTO_FIX)) {

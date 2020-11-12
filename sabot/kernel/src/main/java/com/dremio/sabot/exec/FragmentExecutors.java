@@ -103,7 +103,16 @@ public class FragmentExecutors implements AutoCloseable, Iterable<FragmentExecut
       new CacheLoader<FragmentHandle, FragmentHandler>() {
         @Override
         public FragmentHandler load(FragmentHandle key) throws Exception {
-          return new FragmentHandler(key, evictionDelayMillis);
+          // Underlying loading cache's refresh() calls reload() on this
+          // cacheLoader, which indirectly calls this load() method.
+          // So new FragmentHandler should not be created, instead
+          // existing handler should be used. This will avoid using
+          // extra heap memory.
+          FragmentHandler exitingFragmentHandler = handlers.getIfPresent(key);
+          if(exitingFragmentHandler == null) {
+            return new FragmentHandler(key, evictionDelayMillis);
+          }
+          return exitingFragmentHandler;
         }
       },
       null, evictionDelayMillis);
@@ -188,19 +197,22 @@ public class FragmentExecutors implements AutoCloseable, Iterable<FragmentExecut
    * @param queryId
    * @param clerk
    */
-  public void failFragments(QueryId queryId, QueriesClerk clerk, Throwable throwable) {
+  public void failFragments(QueryId queryId, QueriesClerk clerk, Throwable throwable, String failContext) {
     for (FragmentTicket fragmentTicket : clerk.getFragmentTickets(queryId)) {
-      failFragment(fragmentTicket.getHandle(), throwable);
+      failFragment(fragmentTicket.getHandle(), throwable, failContext);
     }
   }
 
   @VisibleForTesting
   void cancelFragment(FragmentHandle handle) { handlers.getUnchecked(handle).cancel(); }
 
-  void failFragment(FragmentHandle handle, Throwable throwable) {
+  void failFragment(FragmentHandle handle, Throwable throwable, String failContext) {
     UserException.Builder builder = UserException
       .resourceError(throwable)
       .message(UserException.MEMORY_ERROR_MSG);
+    if (failContext != null && !failContext.isEmpty()) {
+      builder = builder.addContext(failContext);
+    }
     handlers.getUnchecked(handle).fail(builder.buildSilently());
   }
 

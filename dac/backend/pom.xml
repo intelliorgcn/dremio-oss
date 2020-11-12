@@ -22,7 +22,7 @@
   <parent>
     <groupId>com.dremio</groupId>
     <artifactId>dremio-dac-parent</artifactId>
-    <version>4.7.2-202008180758160892-1a34c463</version>
+    <version>4.9.1-202010230218060541-2e764ed0</version>
   </parent>
 
   <artifactId>dremio-dac-backend</artifactId>
@@ -74,6 +74,10 @@
       <classifier>proto</classifier>
       <version>${project.version}</version>
     </dependency>
+    <dependency>
+      <groupId>com.dremio.services</groupId>
+      <artifactId>dremio-services-arrow-flight</artifactId>
+    </dependency>
 
     <dependency>
       <groupId>com.dremio</groupId>
@@ -120,6 +124,11 @@
     <dependency>
       <groupId>com.dremio.services</groupId>
       <artifactId>dremio-services-users</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>com.dremio.services</groupId>
+      <artifactId>dremio-services-tokens</artifactId>
+      <version>${project.version}</version>
     </dependency>
     <dependency>
       <groupId>com.dremio.services</groupId>

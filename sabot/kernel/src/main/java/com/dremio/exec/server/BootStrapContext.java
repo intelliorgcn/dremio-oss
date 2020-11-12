@@ -23,6 +23,7 @@ import org.apache.arrow.memory.RootAllocatorFactory;
 
 import com.dremio.common.AutoCloseables;
 import com.dremio.common.concurrent.CloseableExecutorService;
+import com.dremio.common.concurrent.CloseableThreadPool;
 import com.dremio.common.concurrent.ContextMigratingExecutorService.ContextMigratingCloseableExecutorService;
 import com.dremio.common.config.LogicalPlanPersistence;
 import com.dremio.common.config.SabotConfig;
@@ -31,11 +32,11 @@ import com.dremio.common.memory.DremioRootAllocator;
 import com.dremio.common.memory.MemoryDebugInfo;
 import com.dremio.common.scanner.persistence.ScanResult;
 import com.dremio.config.DremioConfig;
-import com.dremio.exec.rpc.CloseableThreadPool;
 import com.dremio.exec.store.sys.MemoryIterator;
 import com.dremio.service.SingletonRegistry;
 import com.dremio.telemetry.api.Telemetry;
 import com.dremio.telemetry.api.metrics.Metrics;
+import com.dremio.telemetry.utils.GrpcTracerFacade;
 import com.dremio.telemetry.utils.TracerFacade;
 
 import io.opentracing.Tracer;
@@ -57,6 +58,7 @@ public class BootStrapContext implements AutoCloseable {
 
   public BootStrapContext(DremioConfig config, ScanResult classpathScan, SingletonRegistry registry) {
     registry.bind(Tracer.class, TracerFacade.INSTANCE);
+    registry.bind(GrpcTracerFacade.class, new GrpcTracerFacade(TracerFacade.INSTANCE));
     Telemetry.startTelemetry();
 
     this.config = config.getSabotConfig();

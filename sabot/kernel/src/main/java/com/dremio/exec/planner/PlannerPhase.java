@@ -29,6 +29,7 @@ import org.apache.calcite.plan.volcano.AbstractConverter.ExpandConversionRule;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.core.Filter;
 import org.apache.calcite.rel.core.Join;
+import org.apache.calcite.rel.core.SetOp;
 import org.apache.calcite.rel.logical.LogicalAggregate;
 import org.apache.calcite.rel.logical.LogicalCalc;
 import org.apache.calcite.rel.logical.LogicalFilter;
@@ -134,6 +135,8 @@ import com.dremio.exec.planner.physical.UnionAllPrule;
 import com.dremio.exec.planner.physical.ValuesPrule;
 import com.dremio.exec.planner.physical.WindowPrule;
 import com.dremio.exec.planner.physical.WriterPrule;
+import com.dremio.exec.planner.tablefunctions.ExternalQueryScanPrule;
+import com.dremio.exec.planner.tablefunctions.ExternalQueryScanRule;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
 
@@ -201,6 +204,7 @@ public enum PlannerPhase {
         ConvertCountDistinctToHll.INSTANCE,
         RewriteNdvAsHll.INSTANCE,
 
+        PushProjectIntoScanRule.INSTANCE,
         PushFilterPastProjectRule.CALCITE_NO_CHILD_CHECK,
 
         JoinFilterCanonicalizationRule.INSTANCE,
@@ -214,9 +218,6 @@ public enum PlannerPhase {
         ProjectSetOpTransposeRule.INSTANCE,
         MergeProjectRule.CALCITE_INSTANCE,
         RemoveEmptyScansRule.INSTANCE
-
-        // This can't run here because even though it is heuristic, it causes acceleration matches to fail.
-        // PushProjectIntoScanRule.INSTANCE
       );
 
       if (context.getPlannerSettings().isRelPlanningEnabled()) {
@@ -323,11 +324,9 @@ public enum PlannerPhase {
       if(context.getPlannerSettings().isProjectLogicalCleanupEnabled()) {
         moreRules.add(MergeProjectRule.CALCITE_INSTANCE);
         moreRules.add(ProjectRemoveRule.INSTANCE);
+      }
 
-      }
-      if(moreRules.isEmpty()) {
-        return LOGICAL_RULE_SET;
-      }
+      moreRules.add(ExternalQueryScanRule.INSTANCE);
 
       return PlannerPhase.mergedRuleSets(LOGICAL_RULE_SET, RuleSets.ofList(moreRules));
     }
@@ -444,7 +443,10 @@ public enum PlannerPhase {
    * {@link org.apache.calcite.rel.core.SetOp}.
    */
   public static final FilterSetOpTransposeRule FILTER_SET_OP_TRANSPOSE_CALCITE_RULE =
-    new FilterSetOpTransposeRule(DremioRelFactories.CALCITE_LOGICAL_BUILDER);
+    new FilterSetOpTransposeRule(
+        LogicalFilter.class,
+        SetOp.class,
+        DremioRelFactories.CALCITE_LOGICAL_BUILDER);
 
   /**
    * Planner rule that pushes predicates from a Filter into the Join below.
@@ -710,6 +712,7 @@ public enum PlannerPhase {
     ruleList.add(ValuesPrule.INSTANCE);
     ruleList.add(EmptyPrule.INSTANCE);
     ruleList.add(PushLimitToPruneableScan.INSTANCE);
+    ruleList.add(ExternalQueryScanPrule.INSTANCE);
 
     if (ps.isHashAggEnabled()) {
       ruleList.add(HashAggPrule.INSTANCE);
@@ -752,4 +755,15 @@ public enum PlannerPhase {
     }
     return RuleSets.ofList(relOptRuleSetBuilder.build());
   }
+
+  /**
+   * Phase names during planning
+   */
+  public static final String PLAN_CONVERTED_SCAN = "Convert Scan";
+  public static final String PLAN_VALIDATED = "Validation";
+  public static final String PLAN_CONVERTED_TO_REL = "Convert To Rel";
+  public static final String PLAN_FIND_MATERIALIZATIONS = "Find Materializations";
+  public static final String PLAN_NORMALIZED = "Normalization";
+  public static final String PLAN_REL_TRANSFORM = "Substitution";
+  public static final String PLAN_FINAL_PHYSICAL = "Final Physical Transformation";
 }

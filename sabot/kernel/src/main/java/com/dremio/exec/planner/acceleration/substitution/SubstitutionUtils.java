@@ -19,8 +19,12 @@ import java.io.IOException;
 import java.io.PrintWriter;
 import java.io.Writer;
 import java.util.Collection;
+import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Objects;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.RelShuttle;
@@ -32,11 +36,11 @@ import org.apache.calcite.sql.SqlExplainLevel;
 import com.dremio.exec.planner.RoutingShuttle;
 import com.dremio.exec.planner.StatelessRelShuttleImpl;
 import com.dremio.exec.planner.acceleration.DremioMaterialization;
+import com.dremio.exec.planner.acceleration.ExpansionNode;
+import com.dremio.exec.tablefunctions.ExternalQueryScanCrel;
 import com.dremio.reflection.rules.ReplacementPointer;
 import com.dremio.service.Pointer;
 import com.google.common.base.Preconditions;
-import com.google.common.base.Predicate;
-import com.google.common.collect.FluentIterable;
 import com.google.common.collect.Sets;
 
 /**
@@ -55,6 +59,22 @@ public final class SubstitutionUtils {
   };
 
   private SubstitutionUtils() { }
+
+  public static Set<List<String>> findExpansionNodes(final RelNode node) {
+    final Set<List<String>> usedVdsPaths = new LinkedHashSet<>();
+    final RelVisitor visitor = new RelVisitor() {
+      @Override
+      public void visit(final RelNode node, final int ordinal, final RelNode parent) {
+        if (node instanceof ExpansionNode) {
+          ExpansionNode expansionNode = (ExpansionNode) node;
+          usedVdsPaths.add(expansionNode.getPath().getPathComponents());
+        }
+        super.visit(node, ordinal, parent);
+      }
+    };
+    visitor.go(node);
+    return usedVdsPaths;
+  }
 
   public static Set<List<String>> findTables(final RelNode node) {
     final Set<List<String>> usedTables = Sets.newLinkedHashSet();
@@ -101,7 +121,7 @@ public final class SubstitutionUtils {
    * Returns whether {@code table} uses one or more of the tables in
    * {@code usedTables}.
    */
-  public static boolean usesTable(final Set<List<String>> tables, final RelNode rel) {
+  public static boolean usesTableOrVds(final Set<List<String>> tables, final Set<List<String>> vdsPaths, final Set<ExternalQueryDescriptor> externalQueries, final RelNode rel) {
     final Pointer<Boolean> used = new Pointer<>(false);
     rel.accept(new RoutingShuttle() {
       @Override
@@ -116,23 +136,79 @@ public final class SubstitutionUtils {
         if (used.value) {
           return other;
         }
+        if (other instanceof ExternalQueryScanCrel) {
+          ExternalQueryScanCrel eq = (ExternalQueryScanCrel) other;
+          if (externalQueries.contains(descriptor(eq))) {
+            used.value = true;
+            return other;
+          }
+        }
+        if (other instanceof ExpansionNode) {
+          ExpansionNode expansionNode = (ExpansionNode) other;
+          if (vdsPaths.contains(expansionNode.getPath().getPathComponents())) {
+            used.value = true;
+            return other;
+          }
+        }
         return super.visit(other);
       }
     });
     return used.value;
   }
 
+  private static ExternalQueryDescriptor descriptor(ExternalQueryScanCrel eq) {
+    return new ExternalQueryDescriptor(eq.getPluginId().getName(), eq.getSql());
+  }
+
+  private static class ExternalQueryDescriptor {
+    private final String source;
+    private final String query;
+
+    private ExternalQueryDescriptor(String source, String query) {
+      this.source = source;
+      this.query = query;
+    }
+
+    @Override
+    public boolean equals(Object o) {
+      if (this == o) {
+        return true;
+      }
+      if (o == null || getClass() != o.getClass()) {
+        return false;
+      }
+      ExternalQueryDescriptor that = (ExternalQueryDescriptor) o;
+      return source.equals(that.source) &&
+        query.equals(that.query);
+    }
+
+    @Override
+    public int hashCode() {
+      return Objects.hash(source, query);
+    }
+  }
+
+  private static Set<ExternalQueryDescriptor> findExternalQueries(RelNode query) {
+    Set<ExternalQueryDescriptor> externalQueries = new HashSet<>();
+    query.accept(new RoutingShuttle() {
+      @Override
+      public RelNode visit(RelNode other) {
+        if (other instanceof ExternalQueryScanCrel) {
+          ExternalQueryScanCrel eq = (ExternalQueryScanCrel) other;
+          externalQueries.add(descriptor(eq));
+        }
+        return super.visit(other);
+      }
+    });
+    return externalQueries;
+  }
+
   public static List<DremioMaterialization> findApplicableMaterializations(
     final RelNode query, final Collection<DremioMaterialization> materializations) {
     final Set<List<String>> queryTablesUsed = SubstitutionUtils.findTables(query);
-    return FluentIterable.from(materializations)
-      .filter(new Predicate<DremioMaterialization>() {
-        @Override
-        public boolean apply(DremioMaterialization materialization) {
-          return usesTable(queryTablesUsed, materialization.getQueryRel());
-        }
-      })
-      .toList();
+    final Set<List<String>> queryVdsUsed = SubstitutionUtils.findExpansionNodes(query);
+    final Set<ExternalQueryDescriptor> externalQueries = findExternalQueries(query);
+    return materializations.stream().filter(materialization -> usesTableOrVds(queryTablesUsed, queryVdsUsed, externalQueries, materialization.getQueryRel())).collect(Collectors.toList());
   }
 
   /**

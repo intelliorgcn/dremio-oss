@@ -466,6 +466,7 @@ public abstract class BaseTestServer extends BaseClientUtils {
               .with(DremioConfig.DIST_WRITE_PATH_STRING, distpath)
               .with(DremioConfig.ENABLE_EXECUTOR_BOOL, false)
               .with(DremioConfig.EMBEDDED_MASTER_ZK_ENABLED_PORT_INT, port)
+              .with(DremioConfig.FLIGHT_SERVICE_ENABLED_BOOLEAN, false)
               .clusterMode(ClusterMode.DISTRIBUTED),
           DremioTest.CLASSPATH_SCAN_RESULT,
           dacModule);
@@ -484,7 +485,8 @@ public abstract class BaseTestServer extends BaseClientUtils {
               .jobServerEnabled(true)
               .writePath(folder2.getRoot().getAbsolutePath())
               .with(DremioConfig.DIST_WRITE_PATH_STRING, distpath)
-            .clusterMode(ClusterMode.DISTRIBUTED)
+              .with(DremioConfig.FLIGHT_SERVICE_ENABLED_BOOLEAN, false)
+              .clusterMode(ClusterMode.DISTRIBUTED)
               .localPort(masterDremioDaemon.getBindingProvider().lookup(FabricService.class).getPort() + 1)
               .isRemote(true)
               .with(DremioConfig.ENABLE_EXECUTOR_BOOL, false)
@@ -524,6 +526,7 @@ public abstract class BaseTestServer extends BaseClientUtils {
               .addDefaultUser(addDefaultUser)
               .inMemoryStorage(inMemoryStorage)
               .writePath(folder1.getRoot().getAbsolutePath())
+              .with(DremioConfig.FLIGHT_SERVICE_ENABLED_BOOLEAN, false)
               .clusterMode(DACDaemon.ClusterMode.LOCAL),
               DremioTest.CLASSPATH_SCAN_RESULT,
           dacModule
@@ -636,13 +639,20 @@ public abstract class BaseTestServer extends BaseClientUtils {
       .size();
   }
 
+  private static int getQueryPlanningAllocatorCount() {
+    return l(SabotContext.class)
+      .getQueryPlanningAllocator()
+      .getChildAllocators()
+      .size();
+  }
+
   @AfterClass
   public static void close() throws Exception {
     try (TimedBlock b = Timer.time("BaseTestServer.@AfterClass")) {
 
-      await().atMost(Duration.ofSeconds(5))
-        .untilAsserted(() -> assertEquals("Not all the resource allocators were closed.",
-          0, BaseTestServer.getResourceAllocatorCount()));
+      await().atMost(Duration.ofSeconds(50))
+        .untilAsserted(() -> assertEquals("Not all the resource/query planning allocators were closed.",
+          0, getResourceAllocatorCount() + getQueryPlanningAllocatorCount()));
 
       defaultUser = true; // in case another test disables the default user and forgets to enable it back again at the end
       AutoCloseables.close(

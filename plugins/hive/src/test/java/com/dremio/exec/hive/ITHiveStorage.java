@@ -665,6 +665,38 @@ public class ITHiveStorage extends HiveTestBase {
     readComplexHiveDataTypes("orccomplexorc");
   }
 
+  @Test
+  public void readListOfStructORC() throws Exception {
+    int[] testrows = {0, 500, 1022, 1023, 1024, 4094, 4095, 4096, 4999};
+    for(int i=0; i < testrows.length; ++i) {
+      Integer index = new Integer(testrows[i]);
+      testBuilder().sqlQuery("SELECT list_struct_field[0].name as name FROM hive.orccomplexorc" +
+        " order by rownum limit 1 offset " + index.toString())
+        .ordered()
+        .baselineColumns("name")
+        .baselineValues("name" + Integer.toString(index))
+        .go();
+      testBuilder().sqlQuery("SELECT list_struct_field[1].name as name FROM hive.orccomplexorc" +
+        " order by rownum limit 1 offset " + index.toString())
+        .ordered()
+        .baselineColumns("name")
+        .baselineValues("name" + Integer.toString(index+1))
+        .go();
+      testBuilder().sqlQuery("SELECT list_struct_field[0].age as age FROM hive.orccomplexorc" +
+        " order by rownum limit 1 offset " + index.toString())
+        .ordered()
+        .baselineColumns("age")
+        .baselineValues(index)
+        .go();
+      testBuilder().sqlQuery("SELECT list_struct_field[1].age as age FROM hive.orccomplexorc" +
+        " order by rownum limit 1 offset " + index.toString())
+        .ordered()
+        .baselineColumns("age")
+        .baselineValues(index+1)
+        .go();
+    }
+  }
+
   // DX-16748: dropping support for map data type in ORC
   @Ignore
   public void readMapValuesTest() throws Exception {
@@ -1589,6 +1621,66 @@ public class ITHiveStorage extends HiveTestBase {
     }
   }
 
+  @Test // DX-23234
+  public void testOrcTableWithAncientDates() throws Exception {
+    LocalDateTime dateTime1 = getLocalDateTime("0001-01-01");
+    LocalDateTime dateTime2 = getLocalDateTime("0110-05-12");
+    LocalDateTime dateTime3 = getLocalDateTime("1105-10-06");
+    LocalDateTime dateTime4 = getLocalDateTime("1301-01-01");
+    LocalDateTime dateTime5 = getLocalDateTime("1476-05-31");
+    LocalDateTime dateTime6 = getLocalDateTime("1582-10-01");
+    LocalDateTime dateTime7 = getLocalDateTime("1790-07-17");
+    LocalDateTime dateTime8 = getLocalDateTime("2015-01-01");
+
+    testBuilder()
+      .sqlQuery("SELECT date_col FROM hive.orc_date_table")
+      .unOrdered()
+      .baselineColumns("date_col")
+      .baselineValues(dateTime1)
+      .baselineValues(dateTime2)
+      .baselineValues(dateTime3)
+      .baselineValues(dateTime4)
+      .baselineValues(dateTime5)
+      .baselineValues(dateTime6)
+      .baselineValues(dateTime7)
+      .baselineValues(dateTime8)
+      .go();
+
+    testBuilder()
+      .sqlQuery("SELECT date_col FROM hive.orc_date_table WHERE date_col = '1301-01-01'")
+      .unOrdered()
+      .baselineColumns("date_col")
+      .baselineValues(dateTime4)
+      .go();
+
+    testBuilder()
+      .sqlQuery("SELECT date_col FROM hive.orc_date_table WHERE date_col <= '1105-10-06'")
+      .unOrdered()
+      .baselineColumns("date_col")
+      .baselineValues(dateTime1)
+      .baselineValues(dateTime2)
+      .baselineValues(dateTime3)
+      .go();
+
+    testBuilder()
+      .sqlQuery("SELECT date_col FROM hive.orc_date_table WHERE date_col > '1105-10-06'")
+      .unOrdered()
+      .baselineColumns("date_col")
+      .baselineValues(dateTime4)
+      .baselineValues(dateTime5)
+      .baselineValues(dateTime6)
+      .baselineValues(dateTime7)
+      .baselineValues(dateTime8)
+      .go();
+
+    testBuilder()
+      .sqlQuery("SELECT date_col FROM hive.orc_date_table WHERE date_col = '2015-01-01'")
+      .unOrdered()
+      .baselineColumns("date_col")
+      .baselineValues(dateTime8)
+      .go();
+  }
+
   @Test // DX-11011
   public void parquetSkipAllMultipleRowGroups() throws Exception {
     testBuilder()
@@ -1679,6 +1771,15 @@ public class ITHiveStorage extends HiveTestBase {
       .sqlQuery("SELECT * from hive.partition_format_exception_orc where col1 = 1")
       .unOrdered()
       .sqlBaselineQuery("SELECT * from hive.partition_format_exception_orc where col2 is null")
+      .go();
+  }
+
+  @Test
+  public void testStructWithNullsORC() throws Exception {
+    testBuilder()
+      .sqlQuery("SELECT * from hive.orcnullstruct")
+      .unOrdered()
+      .sqlBaselineQuery("SELECT id, emp_name, city, prm_borr from hive.orcnullstruct")
       .go();
   }
 }

@@ -2092,7 +2092,7 @@
   ],
   peakMemory: 1,
   plansConsidered: 1,
-  queryType: "UI_RUN" | "UI_PREVIEW" | "UI_INTERNAL_PREVIEW" | "UI_INTERNAL_RUN" | "UI_EXPORT" | "ODBC" | "JDBC" | "REST" | "ACCELERATOR_CREATE" | "ACCELERATOR_DROP" | "UNKNOWN" | "PREPARE_INTERNAL" | "ACCELERATOR_EXPLAIN" | "UI_INITIAL_PREVIEW",
+  queryType: "UI_RUN" | "UI_PREVIEW" | "UI_INTERNAL_PREVIEW" | "UI_INTERNAL_RUN" | "UI_EXPORT" | "ODBC" | "JDBC" | "REST" | "ACCELERATOR_CREATE" | "ACCELERATOR_DROP" | "UNKNOWN" | "PREPARE_INTERNAL" | "ACCELERATOR_EXPLAIN" | "UI_INITIAL_PREVIEW" | "FLIGHT",
   requestType: "GET_CATALOGS" | "GET_COLUMNS" | "GET_SCHEMAS" | "GET_TABLES" | "CREATE_PREPARE" | "EXECUTE_PREPARE" | "RUN_SQL" | "GET_SERVER_META",
   resourceScheduling: {
     queueId: "abc",
@@ -2441,7 +2441,7 @@
         "abc",
         ...
       ],
-      queryType: "UI_RUN" | "UI_PREVIEW" | "UI_INTERNAL_PREVIEW" | "UI_INTERNAL_RUN" | "UI_EXPORT" | "ODBC" | "JDBC" | "REST" | "ACCELERATOR_CREATE" | "ACCELERATOR_DROP" | "UNKNOWN" | "PREPARE_INTERNAL" | "ACCELERATOR_EXPLAIN" | "UI_INITIAL_PREVIEW",
+      queryType: "UI_RUN" | "UI_PREVIEW" | "UI_INTERNAL_PREVIEW" | "UI_INTERNAL_RUN" | "UI_EXPORT" | "ODBC" | "JDBC" | "REST" | "ACCELERATOR_CREATE" | "ACCELERATOR_DROP" | "UNKNOWN" | "PREPARE_INTERNAL" | "ACCELERATOR_EXPLAIN" | "UI_INITIAL_PREVIEW" | "FLIGHT",
       requestType: "GET_CATALOGS" | "GET_COLUMNS" | "GET_SCHEMAS" | "GET_TABLES" | "CREATE_PREPARE" | "EXECUTE_PREPARE" | "RUN_SQL" | "GET_SERVER_META",
       resourceSchedulingInfo: {
         queryCost: 1.0,
@@ -3018,6 +3018,7 @@
       ...
     ],
     status: "good" | "bad" | "warn",
+    suggestedUserAction: "abc",
   },
   tag: "abc",
 }
@@ -3366,6 +3367,7 @@
           ...
         ],
         status: "good" | "bad" | "warn",
+        suggestedUserAction: "abc",
       },
       tag: "abc",
     },
@@ -4752,6 +4754,7 @@ any
       secretKey: "abc",
       stsEndpoint: "abc",
     },
+    disablePublicIp: true | false,
     extraConfProps: "abc",
     instanceType: "abc",
     nodeIamInstanceProfile: "abc",
@@ -4809,6 +4812,7 @@ any
       secretKey: "abc",
       stsEndpoint: "abc",
     },
+    disablePublicIp: true | false,
     extraConfProps: "abc",
     instanceType: "abc",
     nodeIamInstanceProfile: "abc",
@@ -4869,6 +4873,7 @@ any
       secretKey: "abc",
       stsEndpoint: "abc",
     },
+    disablePublicIp: true | false,
     extraConfProps: "abc",
     instanceType: "abc",
     nodeIamInstanceProfile: "abc",
@@ -4996,6 +5001,7 @@ any
           secretKey: "abc",
           stsEndpoint: "abc",
         },
+        disablePublicIp: true | false,
         extraConfProps: "abc",
         instanceType: "abc",
         nodeIamInstanceProfile: "abc",

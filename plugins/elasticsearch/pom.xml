@@ -26,7 +26,7 @@
   <parent>
     <artifactId>dremio-plugin-parent</artifactId>
     <groupId>com.dremio.plugins</groupId>
-    <version>4.7.2-202008180758160892-1a34c463</version>
+    <version>4.9.1-202010230218060541-2e764ed0</version>
   </parent>
 
   <artifactId>dremio-elasticsearch-plugin</artifactId>
@@ -197,6 +197,9 @@
             </goals>
             <phase>pre-integration-test</phase>
             <configuration>
+              <!-- Always use non-overlapping ranges in each pom to avoid port conflict -->
+              <minPortNumber>17000</minPortNumber>
+              <maxPortNumber>17999</maxPortNumber>
               <portNames>
                 <portName>tests.elasticsearch.transportPort</portName>
                 <portName>tests.elasticsearch.httpPort</portName>
@@ -214,6 +217,7 @@
           <clusterName>test</clusterName>
           <transportPort>${tests.elasticsearch.transportPort}</transportPort>
           <httpPort>${tests.elasticsearch.httpPort}</httpPort>
+          <timeout>60</timeout>
           <skip>${tests.elasticsearch.api.on}</skip>
         </configuration>
         <executions>

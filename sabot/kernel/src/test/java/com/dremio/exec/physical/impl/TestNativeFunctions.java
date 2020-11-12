@@ -736,6 +736,104 @@ public class TestNativeFunctions extends BaseTestFunction {
     }
   }
 
+  @Test
+  public void testBitwiseFunctions() throws Exception {
+    // bitwise AND
+    testFunctions(new Object[][]{
+      {"bitwise_and(c0, c1)", 0x0147D, 0x17159, 0x01059},
+      {"bitwise_and(c0, c1)", 0xFFFFFFCC, 0x00000297, 0x00000284},
+      {"bitwise_and(c0, c1)", 0x000, 0x285, 0x000},
+      {"bitwise_and(c0, c1)", 0x563672F83L, 0x0D9FCF85BL, 0x041642803L},
+      {"bitwise_and(c0, c1)", 0xFFFFFFFFFFDA8F6AL, 0xFFFFFFFFFFFF791CL, 0xFFFFFFFFFFDA0908L},
+      {"bitwise_and(c0, c1)", 0x6A5B1L, 0x00000L, 0x00000L},
+    });
+
+    // bitwise OR
+    testFunctions(new Object[][]{
+      {"bitwise_or(c0, c1)", 0x0147D, 0x17159, 0x1757D},
+      {"bitwise_or(c0, c1)", 0xFFFFFFCC, 0x00000297, 0xFFFFFFDF},
+      {"bitwise_or(c0, c1)", 0x000, 0x285, 0x285},
+      {"bitwise_or(c0, c1)", 0x563672F83L, 0x0D9FCF85BL, 0x5FBFFFFDBL},
+      {"bitwise_or(c0, c1)", 0xFFFFFFFFFFDA8F6AL, 0xFFFFFFFFFFFF791CL, 0xFFFFFFFFFFFFFF7EL},
+      {"bitwise_or(c0, c1)", 0x6A5B1L, 0x00000L, 0x6A5B1L},
+    });
+
+    // bitwise NOT
+    testFunctions(new Object[][]{
+      {"bitwise_not(c0)", 0x00017159, 0xFFFE8EA6},
+      {"bitwise_not(c0)", 0xFFFFF226, 0x00000DD9},
+      {"bitwise_not(c0)", 0x000000008BCAE9B4L, 0xFFFFFFFF7435164BL},
+      {"bitwise_not(c0)", 0xFFFFFF966C8D7997L, 0x0000006993728668L},
+      {"bitwise_not(c0)", 0x0000000000000000L, 0xFFFFFFFFFFFFFFFFL},
+    });
+  }
+
+  @Test
+  public void testRound() throws Exception {
+    // round for integers / longs
+    testFunctions(new Object[][] {
+      {"round(c0, c1)", 7589, -1, 7590},
+      {"round(c0, c1)", 8532, -2, 8500},
+      {"round(c0, c1)", -8579, -1, -8580},
+      {"round(c0, c1)", -8612, -2, -8600},
+      {"round(c0, c1)", -3874, -6, 0},
+      {"round(c0, c1)", 758, 2, 758},
+      {"round(c0, c1)", 3453562312L, -2, 3453562300L},
+      {"round(c0, c1)", 3453562343L, -5, 3453600000L},
+      {"round(c0, c1)", -345353425343L, 12, -345353425343L},
+      {"round(c0, c1)", -23453462343L, -4, -23453460000L},
+      {"round(c0, c1)", -23453462343L, -5, -23453500000L},
+      {"round(c0, c1)", 345353425343L, -12, 0L}
+    });
+  }
+
+  @Test
+  public void testConcat() throws Exception {
+    testFunctions(new Object[][]{
+      { "concat(c0, c1)", "abc", "ABC", "abcABC"},
+      { "concat(c0, c1)", "abc", NULL_VARCHAR, "abc"},
+      { "concat(c0, c1)", "", "ABC", "ABC"},
+      { "concat(c0, c1)", NULL_VARCHAR, NULL_VARCHAR, ""},
+      { "concat(c0, c1, c2)", "abcd", "a", "bcd", "abcdabcd"},
+      { "concat(c0, c1, c2)", NULL_VARCHAR, "pq", "ard", "pqard"},
+      { "concat(c0, c1, c2)", "abcd", NULL_VARCHAR, "-a", "abcd-a"},
+      { "concat(c0, c1, c2, c3)", "pqrs", "", "[n]abc", "y", "pqrs[n]abcy"},
+      { "concat(c0, c1, c2, c3)", "", "pq", "ard", NULL_VARCHAR, "pqard"},
+      { "concat(c0, c1, c2, c3, c4)", "", "npq", "ARD", "", "abc", "npqARDabc"},
+      { "concat(c0, c1, c2, c3, c4)", "pqrs", NULL_VARCHAR, "nabc", "=y123",
+        NULL_VARCHAR, "pqrsnabc=y123"},
+      { "concat(c0, c1, c2, c3, c4, c5)", ":a", "npq", "ard", "", "abcn",
+        "sdfgs", ":anpqardabcnsdfgs"},
+      { "concat(c0, c1, c2, c3, c4, c5)", "PQRS", NULL_VARCHAR, "abc", "y",
+        NULL_VARCHAR, "bcd", "PQRSabcybcd"},
+      { "concat(c0, c1, c2, c3, c4, c5, c6)", ":o", "npq", "ard", "==", "abcn",
+        "sdfgs", "", ":onpqard==abcnsdfgs"},
+      { "concat(c0, c1, c2, c3, c4, c5, c6)", "pqrs", NULL_VARCHAR, "abc-n",
+        "YABC", NULL_VARCHAR, "asdf", "jkl", "pqrsabc-nYABCasdfjkl"},
+      { "concat(c0, c1, c2, c3, c4, c5, c6, c7)", "", "##npq", "ard",
+        "", "abcn", "sdf*gs", "", "", "##npqardabcnsdf*gs"},
+      { "concat(c0, c1, c2, c3, c4, c5, c6, c7)", NULL_VARCHAR, "pqrs",
+        "abc", "y", NULL_VARCHAR, "asdf", "jkl", "$$", "pqrsabcyasdfjkl$$"},
+      { "concat(c0, c1, c2, c3, c4, c5, c6, c7, c8)", "abcd", "", "pq", "ard",
+        "", "abcn", "sdfgs", "", "qwert|n", "abcdpqardabcnsdfgsqwert|n"},
+      { "concat(c0, c1, c2, c3, c4, c5, c6, c7, c8)", NULL_VARCHAR, "abcd", "npq",
+        "sdfgs", "", "uwu", "wfw", "ABC", NULL_VARCHAR, "abcdnpqsdfgsuwuwfwABC"},
+      { "concat(c0, c1, c2, c3, c4, c5, c6, c7, c8, c9)", "abcd", "", "pq", "ard", "",
+        "ABCN", "sdfgs", "", "qwert|n", "a", "abcdpqardABCNsdfgsqwert|na"},
+      { "concat(c0, c1, c2, c3, c4, c5, c6, c7, c8, c9)", NULL_VARCHAR, "abcd", "npq",
+        "sdfgs", "", "uwu", "wfw", "ABC", NULL_VARCHAR, "1234", "abcdnpqsdfgsuwuwfwABC1234"},
+    });
+  }
+
+  @Test
+  public void testConcatOperator() throws Exception {
+    testFunctions(new Object[][]{
+      { "concatOperator(c0, c1)", "abcd", "ABCD", "abcdABCD"},
+      { "concatOperator(c0, c1)", "", "ABCD", "ABCD"},
+      { "concatOperator(c0, c1)", NULL_VARCHAR, "abc", NULL_VARCHAR},
+      { "concatOperator(c0, c1)", "", "", ""},
+    });
+  }
 
   @Test
   public void testFlippedCodeGenerator() throws Exception {
@@ -810,6 +908,16 @@ public class TestNativeFunctions extends BaseTestFunction {
         {"cast(c0 as BIGINT)", interval_day(1, 1), 86400001L},
         {"cast(c0 as BIGINT)", interval_day(-1, 0), -86400000L},
         {"cast(c0 as BIGINT)", interval_day(-1, -1), -86400001L}
+    });
+  }
+
+  @Test
+  public void testCastBigIntToTimestamp() throws Exception {
+    testFunctions(new Object[][]{
+      {"castTIMESTAMP(c0)", 15020L, ts("1970-01-01T00:00:15.020")},
+      {"castTIMESTAMP(c0)", 5*86400000L, ts("1970-01-06T00:00:00")},
+      {"castTIMESTAMP(c0)", -20800L, ts("1969-12-31T23:59:39.200")},
+      {"castTIMESTAMP(c0)", -12*86400000L, ts("1969-12-20T00:00:00")}
     });
   }
 

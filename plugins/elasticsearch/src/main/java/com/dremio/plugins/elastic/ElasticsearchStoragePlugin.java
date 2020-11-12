@@ -15,6 +15,8 @@
  */
 package com.dremio.plugins.elastic;
 
+import static com.dremio.exec.ExecConstants.ELASTIC_ACTION_RETRIES_VALIDATOR;
+
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -81,7 +83,6 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
 import com.google.protobuf.InvalidProtocolBufferException;
 
-import io.protostuff.ByteString;
 import io.protostuff.ByteStringUtil;
 
 /**
@@ -156,7 +157,8 @@ public class ElasticsearchStoragePlugin implements StoragePlugin, SupportsListin
           config.getAccessSecret(),
           config.getRegionName()),
         config.getReadTimeoutMillis(),
-        config.isUseWhitelist());
+        config.isUseWhitelist(),
+        context.getOptionManager().getOption(ELASTIC_ACTION_RETRIES_VALIDATOR));
     } catch (IllegalArgumentException e) {
       throw UserException.connectionError(e)
         .message("Failed to authenticate with Elasticsearch cluster %s", config.getHostList().stream()
@@ -489,17 +491,23 @@ public class ElasticsearchStoragePlugin implements StoragePlugin, SupportsListin
                       ElasticConnectionPool.MIN_VERSION_TO_ENABLE_NEW_FEATURES));
             }
           case "yellow":
-            return SourceState.warnState("Elastic cluster health is yellow.");
+            return SourceState.warnState(
+              "Elastic cluster health is yellow: more nodes are needed for replicas.", "Elastic cluster health is yellow.");
           case "red":
-            return SourceState.badState("Elastic cluster health is red.");
+            return SourceState.badState(
+              "Elastic cluster health is red. Check for failed cluster nodes and crashing processes due to heavy load.",
+              "Elastic cluster health is red.");
           default:
-            return SourceState.badState(String.format("Elastic cluster health is unknown health state of %s.", clusterHealth));
+            return SourceState.badState(String.format("Elastic cluster health is unknown health state of %s.", clusterHealth),
+                String.format("Elastic cluster health is unknown health state of %s.", clusterHealth));
         }
       } else {
-        return SourceState.badState("Failure getting Elastic health. " + result.getErrorMessage());
+        return SourceState.badState("Failure getting Elastic health. " + result.getErrorMessage(),
+            "Failure getting Elastic health. " + result.getErrorMessage());
       }
     } catch (Exception e) {
-      return SourceState.badState("Failure getting Elastic health. " + e.getMessage());
+      return SourceState.badState("Failure getting Elastic health. " + e.getMessage(),
+          "Failure getting Elastic health. " + e.getMessage());
     }
   }
 

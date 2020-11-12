@@ -18,6 +18,8 @@ package com.dremio.exec.store.hive.exec;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.nio.charset.StandardCharsets;
+import java.sql.Date;
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
@@ -59,6 +61,7 @@ import org.apache.hadoop.hive.serde2.io.HiveDecimalWritable;
 import com.dremio.common.exceptions.UserException;
 import com.dremio.sabot.exec.context.OperatorContext;
 import com.google.common.annotations.VisibleForTesting;
+import com.google.common.base.Preconditions;
 
 public class HiveORCCopiers {
 
@@ -382,21 +385,26 @@ public class HiveORCCopiers {
     @Override
     public void copy(int inputIdx, int count, int outputIdx) {
       ensureHasRequiredCapacity(outputIdx + count);
-      int fieldCount = inputVector.fields.length;
-      for (int idx=0; idx<fieldCount; ++idx) {
-        fieldCopiers.get(idx).copy(inputIdx, count, outputIdx);
-      }
-
-      if (inputVector.noNulls) {
-        for (int rowIndex = 0; rowIndex < count; rowIndex++) {
-          outputVector.setIndexDefined(outputIdx + rowIndex);
-        }
+      if (inputVector.isRepeating) {
+        Preconditions.checkState(inputVector.isNull[0], "ORC Struct vector has non null repeated element");
+        return; // If all repeating values are null, then there is no need to write anything to vector
       } else {
-        for (int rowIndex = 0; rowIndex < count; rowIndex++) {
-          if (inputVector.isNull[rowIndex]) {
-            outputVector.setNull(outputIdx + rowIndex);
-          } else {
+        int fieldCount = inputVector.fields.length;
+        for (int idx = 0; idx < fieldCount; ++idx) {
+          fieldCopiers.get(idx).copy(inputIdx, count, outputIdx);
+        }
+
+        if (inputVector.noNulls) {
+          for (int rowIndex = 0; rowIndex < count; rowIndex++) {
             outputVector.setIndexDefined(outputIdx + rowIndex);
+          }
+        } else {
+          for (int rowIndex = 0; rowIndex < count; rowIndex++) {
+            if (inputVector.isNull[rowIndex]) {
+              outputVector.setNull(outputIdx + rowIndex);
+            } else {
+              outputVector.setIndexDefined(outputIdx + rowIndex);
+            }
           }
         }
       }
@@ -588,9 +596,25 @@ public class HiveORCCopiers {
 
   private static class DateMilliCopier  extends ORCCopierBase  {
     private static final long MILLIS_PER_DAY = TimeUnit.DAYS.toMillis(1L);
+    private static final long EPOCH_DAY_FOR_1582_10_15 = LocalDate.parse("1582-10-15").toEpochDay();
 
     private LongColumnVector inputVector;
     private DateMilliVector outputVector;
+
+    /**
+     * Hive 2.x uses DateWritable for converting date to epoch days and the conversion is buggy because
+     * of the Julian and Gregorian calendar changes. This issue does not occur for Hive 3.x which uses
+     * DateWritableV2 which uses {@link LocalDate#toEpochDay} to do the conversion
+     *
+     * Hence we do the appropriate conversion if the date is prior to 1582-10-15
+     * Else, no conversion is required
+     */
+    private long getTrueEpochInMillis(long epochInDays) {
+      if (epochInDays > EPOCH_DAY_FOR_1582_10_15) {
+        return epochInDays * MILLIS_PER_DAY;
+      }
+      return new Date(epochInDays * MILLIS_PER_DAY).toLocalDate().toEpochDay() * MILLIS_PER_DAY;
+    }
 
     DateMilliCopier(LongColumnVector inputVector, DateMilliVector outputVector) {
       this.inputVector = inputVector;
@@ -611,19 +635,19 @@ public class HiveORCCopiers {
         if (inputVector.isNull[0]) {
           return; // If all repeating values are null, then there is no need to write anything to vector
         }
-        final long value = input[0] * MILLIS_PER_DAY;
+        final long value = getTrueEpochInMillis(input[0]);
         for (int i = 0; i < count; i++, outputIdx++) {
           outputVector.set(outputIdx, value);
         }
       } else if (inputVector.noNulls) {
         for (int i = 0; i < count; i++, inputIdx++, outputIdx++) {
-          outputVector.set(outputIdx, input[inputIdx] * MILLIS_PER_DAY);
+          outputVector.set(outputIdx, getTrueEpochInMillis(input[inputIdx]));
         }
       } else {
         final boolean[] isNull = inputVector.isNull;
         for (int i = 0; i < count; i++, inputIdx++, outputIdx++) {
           if (!isNull[inputIdx]) {
-            outputVector.set(outputIdx, input[inputIdx] * MILLIS_PER_DAY);
+            outputVector.set(outputIdx, getTrueEpochInMillis(input[inputIdx]));
           }
         }
       }

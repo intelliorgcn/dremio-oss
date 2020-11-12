@@ -38,6 +38,7 @@ import com.dremio.service.jobtelemetry.PutPlanningProfileRequest;
 import com.dremio.service.jobtelemetry.PutTailProfileRequest;
 import com.dremio.service.jobtelemetry.server.store.MetricsStore;
 import com.dremio.service.jobtelemetry.server.store.ProfileStore;
+import com.dremio.telemetry.utils.GrpcTracerFacade;
 import com.google.common.base.Preconditions;
 import com.google.inject.Inject;
 import com.google.protobuf.Empty;
@@ -52,6 +53,7 @@ public class JobTelemetryServiceImpl extends JobTelemetryServiceGrpc.JobTelemetr
   private static final org.slf4j.Logger logger =
       org.slf4j.LoggerFactory.getLogger(JobTelemetryServiceImpl.class);
   private static final int METRICS_PUBLISH_FREQUENCY_MILLIS = 2500;
+  private static final int MAX_RETRIES = 3;
 
   private final MetricsStore metricsStore;
   private final ProfileStore profileStore;
@@ -61,29 +63,29 @@ public class JobTelemetryServiceImpl extends JobTelemetryServiceGrpc.JobTelemetr
   private Retryer retryer;
 
   @Inject
-  JobTelemetryServiceImpl(MetricsStore metricsStore, ProfileStore profileStore) {
-    this(metricsStore, profileStore, false,
+  JobTelemetryServiceImpl(MetricsStore metricsStore, ProfileStore profileStore, GrpcTracerFacade tracer) {
+    this(metricsStore, profileStore, tracer, false,
       METRICS_PUBLISH_FREQUENCY_MILLIS);
   }
 
-  JobTelemetryServiceImpl(MetricsStore metricsStore, ProfileStore profileStore,
+  JobTelemetryServiceImpl(MetricsStore metricsStore, ProfileStore profileStore, GrpcTracerFacade tracer,
                           boolean saveFullProfileOnQueryTermination) {
-    this(metricsStore, profileStore, saveFullProfileOnQueryTermination,
+    this(metricsStore, profileStore, tracer, saveFullProfileOnQueryTermination,
       METRICS_PUBLISH_FREQUENCY_MILLIS);
   }
 
-  JobTelemetryServiceImpl(MetricsStore metricsStore, ProfileStore profileStore,
+  public JobTelemetryServiceImpl(MetricsStore metricsStore, ProfileStore profileStore, GrpcTracerFacade tracer,
                           boolean saveFullProfileOnQueryTermination,
                           int metricsPublishFrequencyMillis) {
     this.metricsStore = metricsStore;
     this.profileStore = profileStore;
     this.progressMetricsPublisher = new ProgressMetricsPublisher(metricsStore,
       metricsPublishFrequencyMillis);
-    this.bgProfileWriter = new BackgroundProfileWriter(profileStore);
+    this.bgProfileWriter = new BackgroundProfileWriter(profileStore, tracer);
     this.saveFullProfileOnQueryTermination = saveFullProfileOnQueryTermination;
     this.retryer = new Retryer.Builder()
       .retryIfExceptionOfType(DatastoreException.class)
-      .setMaxRetries(Integer.MAX_VALUE)
+      .setMaxRetries(MAX_RETRIES)
       .build();
   }
 
@@ -255,15 +257,9 @@ public class JobTelemetryServiceImpl extends JobTelemetryServiceGrpc.JobTelemetr
   }
 
   private QueryProfile fetchOrBuildMergedProfile(QueryId queryId) {
-    final QueryProfile planningProfile = profileStore.getPlanningProfile(queryId).orElse(null);
-    final QueryProfile tailProfile = profileStore.getTailProfile(queryId).orElse(null);
-
-    if (planningProfile == null && tailProfile == null) {
-      // check for the merged Query profile and return if present
-      Optional<QueryProfile> fullProfile = profileStore.getFullProfile(queryId);
-      if (fullProfile.isPresent()) {
-        return fullProfile.get();
-      }
+    Optional<QueryProfile> fullProfile = profileStore.getFullProfile(queryId);
+    if (fullProfile.isPresent()) {
+      return fullProfile.get();
     }
 
     QueryProfile mergedProfile = buildFullProfile(queryId);

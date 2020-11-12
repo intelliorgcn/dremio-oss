@@ -19,6 +19,7 @@ import static java.lang.Math.toIntExact;
 import static org.apache.hadoop.hive.metastore.api.hive_metastoreConstants.META_TABLE_STORAGE;
 
 import java.io.ByteArrayOutputStream;
+import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -47,6 +48,7 @@ import org.pf4j.PluginManager;
 import org.slf4j.helpers.MessageFormatter;
 
 import com.dremio.common.config.SabotConfig;
+import com.dremio.common.exceptions.InvalidMetadataErrorContext;
 import com.dremio.common.exceptions.UserException;
 import com.dremio.common.util.Closeable;
 import com.dremio.common.utils.PathUtils;
@@ -309,6 +311,13 @@ public class Hive3StoragePlugin extends BaseHiveStoragePlugin implements Storage
         }
       }
     } catch (IOException ioe) {
+      if (ioe instanceof FileNotFoundException) {
+        throw UserException.invalidMetadataError(ioe)
+          .addContext(ioe.getMessage())
+          .setAdditionalExceptionContext(
+            new InvalidMetadataErrorContext(ImmutableList.of(key.getPathComponents()))
+          ).build(logger);
+      }
       throw UserException.dataReadError(ioe).build(logger);
     }
     return true;
@@ -796,6 +805,7 @@ public class Hive3StoragePlugin extends BaseHiveStoragePlugin implements Storage
     if (!isOpen.get()) {
       logger.debug("Tried to get the state of a Hive plugin that is either not started or already closed: {}.", this.getName());
       return new SourceState(SourceStatus.bad,
+        String.format("Could not connect to Hive source %s, check your Hive credentials and network settings.", this.getName()),
         ImmutableList.of(new SourceState.Message(MessageLevel.ERROR,
           String.format("Hive Metastore client on source %s was not started or already closed.", this.getName()))));
     }
@@ -805,7 +815,9 @@ public class Hive3StoragePlugin extends BaseHiveStoragePlugin implements Storage
       return SourceState.GOOD;
     } catch (Exception ex) {
       logger.debug("Caught exception while trying to get status of HIVE source {}, error: ", this.getName(), ex);
+      // DX-24956
       return new SourceState(SourceStatus.bad,
+        String.format("Could not connect to Hive source %s, check your Hive credentials and network settings.", this.getName()),
         Collections.singletonList(new SourceState.Message(MessageLevel.ERROR,
           "Failure connecting to source: " + ex.getMessage())));
     }

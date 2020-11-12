@@ -225,6 +225,7 @@ public class ITInfoSchemaOnHiveStorage extends HiveTestBase {
         .baselineValues("hive.default", "orc_strings_complex")
         .baselineValues("hive.default", "text_date")
         .baselineValues("hive.default", "orc_date")
+        .baselineValues("hive.default", "orc_date_table")
         .baselineValues("hive.default", "parquet_bigint")
         .baselineValues("hive.default", "timestamptostring")
         .baselineValues("hive.default", "timestamptostring_orc")
@@ -296,6 +297,8 @@ public class ITInfoSchemaOnHiveStorage extends HiveTestBase {
         .baselineValues("hive.default", "deeply_nested_list_test")
         .baselineValues("hive.default", "deeply_nested_struct_test")
         .baselineValues("hive.default", "struct_extra_test_ext")
+        .baselineValues("hive.default", "orcnullstruct")
+        .baselineValues("hive.default", "orc_part_test")
       .go();
 
     testBuilder()

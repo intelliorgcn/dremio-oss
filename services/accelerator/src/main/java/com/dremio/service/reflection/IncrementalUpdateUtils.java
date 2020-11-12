@@ -15,6 +15,7 @@
  */
 package com.dremio.service.reflection;
 
+import java.util.ArrayList;
 import java.util.List;
 
 import org.apache.calcite.rel.RelNode;
@@ -22,9 +23,13 @@ import org.apache.calcite.rel.core.TableScan;
 import org.apache.calcite.rel.logical.LogicalAggregate;
 import org.apache.calcite.rel.logical.LogicalFilter;
 import org.apache.calcite.rel.logical.LogicalProject;
+import org.apache.calcite.rel.logical.LogicalSort;
+import org.apache.calcite.sql.SqlAggFunction;
+import org.apache.calcite.sql.SqlKind;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.dremio.exec.expr.fn.hll.HyperLogLog;
 import com.dremio.exec.planner.RoutingShuttle;
 import com.dremio.exec.planner.StatelessRelShuttleImpl;
 import com.dremio.exec.planner.acceleration.ExpansionNode;
@@ -78,13 +83,15 @@ public class IncrementalUpdateUtils {
 
   /**
    * Visitor that checks if a logical plan can support incremental update. The supported pattern right now is a plan
-   * that contains only ExpansionNode, Filters, Projects, Scans, and Aggregates. There can only be one Aggregate in the plan, and the
+   * that contains only ExpansionNode, Filters, Projects, Scans, Sorts and Aggregates.
+   * There can only be one Aggregate in the plan, the Sort must not have any FETCH and OFFSET, and the
    * Scan most support incremental update.
    */
   private static class IncrementalChecker extends RoutingShuttle {
     private final ReflectionSettings reflectionSettings;
 
     private RelNode unsupportedOperator = null;
+    private List<SqlAggFunction> unsupportedAggregates = new ArrayList<>();
     private boolean isIncremental = false;
     private int aggCount = 0;
 
@@ -93,13 +100,13 @@ public class IncrementalUpdateUtils {
     }
 
     public boolean isIncremental() {
-      if (!isIncremental) {
-        logger.debug("Cannot do incremental update because the table is not incrementally updateable");
+      if (unsupportedOperator != null) {
+        logger.debug("Cannot do incremental update because {} does not support incremental update", unsupportedOperator.getRelTypeName());
         return false;
       }
 
-      if (unsupportedOperator != null) {
-        logger.debug("Cannot do incremental update because {} does not support incremental update", unsupportedOperator.getRelTypeName());
+      if (!unsupportedAggregates.isEmpty()) {
+        logger.debug("Cannot do incremental update because Aggregate operator has unsupported aggregate functions: {}", unsupportedAggregates);
         return false;
       }
 
@@ -108,7 +115,11 @@ public class IncrementalUpdateUtils {
         return false;
       }
 
-      return true;
+      if (!isIncremental) {
+        logger.debug("Cannot do incremental update because the table is not incrementally updateable");
+      }
+
+      return isIncremental;
     }
 
     @Override
@@ -116,7 +127,6 @@ public class IncrementalUpdateUtils {
       if (other instanceof ExpansionNode) {
         return visitChild(other, 0, other.getInput(0));
       }
-
       if (unsupportedOperator == null) {
         unsupportedOperator = other;
       }
@@ -133,7 +143,33 @@ public class IncrementalUpdateUtils {
 
     public RelNode visit(LogicalAggregate aggregate) {
       aggCount++;
+      aggregate.getAggCallList().forEach(a -> {
+        if (!canRollUp(a.getAggregation())) {
+          unsupportedAggregates.add(a.getAggregation());
+        }
+      });
       return visitChild(aggregate, 0, aggregate.getInput());
+    }
+
+    private static boolean canRollUp(final SqlAggFunction aggregation) {
+      final SqlKind kind = aggregation.getKind();
+      return kind == SqlKind.SUM
+        || kind == SqlKind.SUM0
+        || kind == SqlKind.MIN
+        || kind == SqlKind.MAX
+        || kind == SqlKind.COUNT
+        || HyperLogLog.HLL.getName().equals(aggregation.getName());
+    }
+
+    @Override
+    public RelNode visit(LogicalSort sort) {
+      if(sort.fetch == null && sort.offset == null) {
+        return visitChild(sort, 0, sort.getInput());
+      }
+      if (unsupportedOperator == null) {
+        unsupportedOperator = sort;
+      }
+      return sort;
     }
 
     @Override
